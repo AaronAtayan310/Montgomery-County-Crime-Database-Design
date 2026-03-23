@@ -1,0 +1,73 @@
+-- View 1: what types of offenses occur in specific cities of MoCo.
+DROP VIEW IF EXISTS geographic_crime_patterns;
+
+CREATE VIEW geographic_crime_patterns AS
+SELECT 
+	l.City, l.State, c.Latitude, c.Longitude,
+    i.CR_Number AS case_number, i.Start_Date_Time,
+    o.Crime_Name_3 AS offense_type
+FROM Incident i
+JOIN LOCATION l ON i.Location_ID = l.Location_ID
+JOIN COORDINATES c ON l.Coordinate_ID = c.Coordinate_ID
+JOIN Incident_Offense i_o ON i.Incident_ID = i_o.Incident_ID
+JOIN Offense o ON i_o.Offense_Code_ID = o.Offense_Code_ID
+WHERE l.City IN (
+    SELECT l2.City
+    FROM LOCATION l2
+    JOIN Incident i2 ON l2.Location_ID = i2.Location_ID
+    GROUP BY l2.City
+    HAVING COUNT(DISTINCT i2.Incident_ID) >= 5
+) AND c.Latitude IS NOT NULL AND c.Longitude IS NOT NULL
+ORDER BY l.City, i.Start_Date_Time DESC;
+
+
+-- View 2: list incidents with their offenses and crime categories.
+DROP VIEW IF EXISTS incident_offense_details;
+  
+CREATE VIEW incident_offense_details AS
+SELECT
+    i.incident_id, i.cr_number, o.offense_code_id,
+    o.crime_name_3, n.crime_name_2, ca.crime_name_1
+FROM incident i
+JOIN incident_offense i_o ON i.incident_id = i_o.incident_id
+JOIN offense o ON i_o.offense_code_id = o.offense_code_id
+JOIN nibrs n ON o.nibrs_code = n.nibrs_code
+JOIN crime_against ca ON n.crime_against_id = ca.crime_against_id;
+
+
+-- View 3: count the number of incidents with more than 1 victims.
+DROP VIEW IF EXISTS high_victim_incidents;
+
+CREATE VIEW high_victim_incidents AS
+SELECT
+	i.incident_id, i.cr_number, i.start_date_time,
+    i.victim_count, l.city, l.state
+FROM incident i 
+	JOIN location l ON i.location_id = l.location_id
+WHERE i.victim_count > 1;
+
+
+-- View 4: group and count incidents by the district they fall under.
+DROP VIEW IF EXISTS incidents_per_district;
+
+CREATE VIEW incidents_per_district AS
+SELECT
+    p_d.police_district_number, p_d.police_district_name,
+    COUNT(i.incident_id) AS total_incidents
+FROM incident i
+JOIN location l ON i.location_id = l.location_id
+JOIN agency a ON l.police_department_id = a.police_department_id
+JOIN police_district p_d ON a.police_district_id = p_d.police_district_id
+GROUP BY p_d.police_district_number, p_d.police_district_name; 
+
+    
+-- View 5: look at incidents with incomplete end time records.
+DROP VIEW IF EXISTS wihtout_incidents_with_complete_time; 
+
+CREATE VIEW incidents_without_complete_time AS
+SELECT
+    i.incident_id, i.cr_number, i.start_date_time,
+    i.end_time_date, l.block_address, l.city, l.state
+FROM incident i
+JOIN location l ON i.location_id = l.location_id
+WHERE i.end_time_date = "0000-00-00 00:00:00";
